@@ -1,0 +1,16 @@
+# Vercel CLI deploys don't automatically respect .gitignore, so this
+# mirrors it - without this, `vercel deploy` from the repo root would try
+# to upload the 1GB+ dataset.npz and raw data/ folders.
+.venv/
+__pycache__/
+*.pyc
+data/
+dataset.npz
+node_modules/
+web/.next/
+web/node_modules/
+.DS_Store
+KAGGLE_API_TOKEN*.rtf
+*.env
+.env*
+!.env.example
