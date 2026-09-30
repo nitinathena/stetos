@@ -1,0 +1,28 @@
+# Vercel Python function dependencies for /api/*.py
+#
+# numpy/scipy/librosa/soundfile: exact DSP parity with the training pipeline
+# (see api/_lib/dsp.py, synced from ../dsp_common.py at build time - do not
+# hand-edit api/_lib/dsp.py).
+#
+# ai-edge-litert: lightweight TFLite interpreter (successor to tflite-runtime)
+# to run heart_sound_model.tflite without pulling in the full ~400MB+
+# tensorflow package. Verified to reproduce the .h5 model's predictions
+# (same label on all 9 test recordings, confidence within ~0.03).
+#
+# flask: minimal WSGI app for the Vercel Python runtime.
+# supabase: storage listing/download + Postgres inserts for sync.py.
+#
+# Note: librosa formally depends on scikit-learn>=1.6.0, numba, and llvmlite.
+# scikit-learn is NOT actually used by the melspectrogram/power_to_db code
+# path we call (verified locally) but pip will still install it as a normal
+# transitive dependency - numba/llvmlite ARE required (librosa.filters
+# imports numba unconditionally). Measured total installed size ~430MB,
+# under Vercel's 500MB Python function limit but without huge headroom -
+# if a future dependency bump pushes this over, revisit.
+numpy==2.5.3
+scipy==1.18.1
+soundfile==0.14.0
+librosa==1.0.0
+ai-edge-litert==2.2.0
+flask==3.1.3
+supabase==2.31.0

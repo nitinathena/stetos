@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets - never commit these
+KAGGLE_API_TOKEN*.rtf
+*.env
+.env*
+!.env.example
+
+# Large/regeneratable data - re-run 0_prepare_physionet_data.py,
+# 1_download_recordings.py, and 2_build_dataset.py to recreate these
+data/
+dataset.npz
+
+# macOS
+.DS_Store
+
+# Node (web/ has its own .gitignore for build output specifics)
+node_modules/

@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --surface: #ffffff;
+  --surface-muted: #f1f5f9;
+  --border: #e2e8f0;
+
+  --brand: #0f766e;
+  --brand-strong: #115e59;
+
+  --status-normal: #059669;
+  --status-normal-bg: #ecfdf5;
+  --status-normal-border: #a7f3d0;
+
+  --status-abnormal: #b91c1c;
+  --status-abnormal-bg: #fef2f2;
+  --status-abnormal-border: #fecaca;
+
+  --warning-bg: #fffbeb;
+  --warning-border: #fde68a;
+  --warning-text: #92400e;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-status-normal: var(--status-normal);
+  --color-status-abnormal: var(--status-abnormal);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b1120;
+    --foreground: #e2e8f0;
+    --surface: #111827;
+    --surface-muted: #1e293b;
+    --border: #1f2937;
+
+    --status-normal-bg: #052e21;
+    --status-normal-border: #065f46;
+
+    /* Dark mode gets its own validated step, not an automatic flip of the
+       light-mode red - #b91c1c falls below 3:1 contrast on this surface
+       (checked with the dataviz skill's validate_palette.js). */
+    --status-abnormal: #dc2626;
+    --status-abnormal-bg: #2a0e0e;
+    --status-abnormal-border: #7f1d1d;
+
+    --warning-bg: #1c1506;
+    --warning-border: #78350f;
+    --warning-text: #fcd34d;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
