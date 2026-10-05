@@ -14,16 +14,32 @@ export async function POST() {
     );
   }
 
+  let res: Response;
   try {
-    const res = await fetch(`${getBaseUrl()}/api/sync`, {
+    res = await fetch(`${getBaseUrl()}/api/sync`, {
       method: "POST",
       headers: { Authorization: `Bearer ${secret}` },
     });
-    const json = await res.json();
-    return NextResponse.json(json, { status: res.status });
   } catch (e) {
     return NextResponse.json(
       { error: `Could not reach sync endpoint: ${e}` },
+      { status: 502 }
+    );
+  }
+
+  // Read as text first - a crash or misroute can return an HTML error page
+  // instead of JSON, and res.json() throwing a SyntaxError on that would
+  // otherwise surface as an opaque "Unexpected token '<'" message.
+  const bodyText = await res.text();
+  try {
+    const json = JSON.parse(bodyText);
+    return NextResponse.json(json, { status: res.status });
+  } catch {
+    return NextResponse.json(
+      {
+        error: `Sync endpoint returned a non-JSON response (HTTP ${res.status})`,
+        bodyPreview: bodyText.slice(0, 200),
+      },
       { status: 502 }
     );
   }

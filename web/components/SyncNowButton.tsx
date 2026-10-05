@@ -13,13 +13,28 @@ export default function SyncNowButton() {
     setMessage(null);
     try {
       const res = await fetch("/api/sync-trigger", { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) {
-        setMessage(json.error ?? "Sync failed");
+      // Read as text first - don't let a non-JSON error response (e.g. an
+      // HTML error page) blow up as an opaque SyntaxError.
+      const bodyText = await res.text();
+      let json: Record<string, unknown> | null = null;
+      try {
+        json = JSON.parse(bodyText);
+      } catch {
+        // not JSON - fall through, json stays null
+      }
+
+      if (!res.ok || !json) {
+        const preview = (json?.bodyPreview as string) ?? bodyText.slice(0, 200);
+        const errorMsg = (json?.error as string) ?? `HTTP ${res.status}`;
+        setMessage(`Sync failed: ${errorMsg}${preview ? ` - ${preview}` : ""}`);
       } else {
+        const processed = (json.processed_this_run as unknown[] | undefined)?.length ?? 0;
+        const remaining = (json.remaining_after_this_run as number | undefined) ?? 0;
         setMessage(
-          `Synced ${json.processed?.length ?? 0} new recording(s) ` +
-          `(${json.bucket_file_count} total in bucket, ${json.already_synced_count} already synced).`
+          `Synced ${processed} new recording(s) ` +
+          `(${json.bucket_file_count} total in bucket, ${json.already_synced_count} already synced` +
+          (remaining > 0 ? `, ${remaining} still remaining for the next run` : "") +
+          `).`
         );
         router.refresh(); // re-fetch the server-rendered dashboard data
       }

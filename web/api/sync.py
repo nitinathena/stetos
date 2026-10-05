@@ -23,6 +23,7 @@ predictions table, re-running it is a no-op for anything already synced.
 import io
 import os
 import sys
+import traceback
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -30,9 +31,15 @@ from flask import Flask, request, jsonify
 
 from _lib.dsp import get_first_window
 from _lib.model_runtime import classify
-from _lib.supabase_client import get_service_client, BUCKET_NAME, PREDICTIONS_TABLE
 
 app = Flask(__name__)
+
+# Max new files processed per invocation. Keeps each run well under the
+# function's time limit regardless of how large the backlog gets - a big
+# bucket just takes a few more cron runs (or a few more clicks of "Sync
+# now") to fully catch up, rather than one call trying to do everything
+# and risking a timeout.
+MAX_FILES_PER_RUN = 5
 
 
 def _is_authorized():
@@ -47,6 +54,21 @@ def _is_authorized():
 def sync():
     if not _is_authorized():
         return jsonify({"error": "Missing or invalid Authorization header"}), 401
+
+    # Imported here, not at module level: this pulls in supabase's heavier
+    # transitive dependencies (cryptography, postgrest, gotrue, etc.) that
+    # predict.py never needs. Importing lazily means a failure here (e.g. a
+    # C-extension that doesn't load in this runtime) produces a normal JSON
+    # error response instead of crashing the whole module before Flask can
+    # even start - which otherwise shows up as an opaque platform 500 page
+    # with no application log at all.
+    try:
+        from _lib.supabase_client import get_service_client, BUCKET_NAME, PREDICTIONS_TABLE
+    except Exception as e:
+        return jsonify({
+            "error": f"Failed to import supabase client: {type(e).__name__}: {e}",
+            "traceback": traceback.format_exc(),
+        }), 500
 
     try:
         client = get_service_client()
@@ -69,10 +91,11 @@ def sync():
         return jsonify({"error": f"Could not query predictions table: {e}"}), 502
 
     new_filenames = [f for f in bucket_filenames if f not in already_synced]
+    batch = new_filenames[:MAX_FILES_PER_RUN]
 
     processed = []
     errors = []
-    for filename in new_filenames:
+    for filename in batch:
         try:
             raw = client.storage.from_(BUCKET_NAME).download(filename)
             spec = get_first_window(io.BytesIO(raw))
@@ -98,6 +121,7 @@ def sync():
         "bucket_file_count": len(bucket_filenames),
         "already_synced_count": len(already_synced),
         "new_files_found": len(new_filenames),
-        "processed": processed,
+        "processed_this_run": processed,
+        "remaining_after_this_run": len(new_filenames) - len(batch),
         "errors": errors,
     })
