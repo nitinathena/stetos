@@ -3,10 +3,19 @@ GET/POST /api/sync
 
 Lists WAV files in the "heart-sounds" Supabase Storage bucket, finds ones
 not already present in the predictions table (matched by filename, across
-either source), runs each through the exact same inference logic
-/api/predict.py uses (imported in-process from _lib, not an HTTP self-call -
-faster and avoids needing to know this deployment's own base URL), and
-inserts results with source="supabase_sync".
+either source), runs each through /api/predict.py via an internal HTTP
+call, and inserts results with source="supabase_sync".
+
+Note: this function deliberately does NOT import the DSP/model stack
+(_lib.dsp, _lib.model_runtime) directly, even though that would be a more
+direct in-process call. It calls /api/predict over HTTP instead, purely so
+this function's own cold-start dependency install stays small and fast
+(just flask + supabase-py + requests) - adding numpy/scipy/librosa/numba/
+llvmlite/scikit-learn/ai-edge-litert on top of supabase's own dependency
+tree made this function's cold start unreliable enough to crash with an
+opaque platform error before any application code (or log line) ever ran.
+The actual inference logic is untouched - it's the exact same /api/predict
+code path, just called over the network instead of imported in-process.
 
 Auth: requires an `Authorization: Bearer <CRON_SECRET>` header. Vercel Cron
 sends this automatically when an env var named exactly CRON_SECRET is set
@@ -20,17 +29,16 @@ run. Since this only ever processes bucket files that aren't already in the
 predictions table, re-running it is a no-op for anything already synced.
 """
 
-import io
 import os
 import sys
 import traceback
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+import requests
 from flask import Flask, request, jsonify
 
-from _lib.dsp import get_first_window
-from _lib.model_runtime import classify
+from _lib.base_url import get_base_url
 
 app = Flask(__name__)
 
@@ -55,13 +63,11 @@ def sync():
     if not _is_authorized():
         return jsonify({"error": "Missing or invalid Authorization header"}), 401
 
-    # Imported here, not at module level: this pulls in supabase's heavier
-    # transitive dependencies (cryptography, postgrest, gotrue, etc.) that
-    # predict.py never needs. Importing lazily means a failure here (e.g. a
-    # C-extension that doesn't load in this runtime) produces a normal JSON
-    # error response instead of crashing the whole module before Flask can
-    # even start - which otherwise shows up as an opaque platform 500 page
-    # with no application log at all.
+    # Imported here, not at module level: if this ever fails (e.g. a
+    # C-extension that doesn't load in this runtime), it produces a normal
+    # JSON error response instead of crashing the whole module before Flask
+    # can even start - which otherwise shows up as an opaque platform 500
+    # page with no application log at all.
     try:
         from _lib.supabase_client import get_service_client, BUCKET_NAME, PREDICTIONS_TABLE
     except Exception as e:
@@ -98,9 +104,16 @@ def sync():
     for filename in batch:
         try:
             raw = client.storage.from_(BUCKET_NAME).download(filename)
-            spec = get_first_window(io.BytesIO(raw))
-            prediction, confidence = classify(spec)
-            confidence = round(confidence, 4)
+
+            predict_resp = requests.post(
+                f"{get_base_url()}/api/predict",
+                files={"file": (filename, raw, "audio/wav")},
+                timeout=60,
+            )
+            predict_resp.raise_for_status()
+            result = predict_resp.json()
+            prediction = result["prediction"]
+            confidence = result["confidence"]
 
             client.table(PREDICTIONS_TABLE).insert({
                 "filename": filename,
